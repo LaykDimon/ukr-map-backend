@@ -24,6 +24,9 @@ export class WikipediaService {
     'Категорія:Українські співаки',
     'Категорія:Українські телеведучі',
   ];
+  private readonly filterOut = [
+    'Івлєєва', 'Медведчук', 'Арестович', 'Марченко'
+  ]
 
   constructor() {}
 
@@ -55,20 +58,20 @@ export class WikipediaService {
     for (const category of this.categories) {
       const data = fs.readFileSync(`./ukr_${category.replace(':', '_')}_views.json`, 'utf8');
       const jsonData = JSON.parse(data);
-      const filteredMembers = jsonData.filter((member) => !members.some((m) => m.id === member.pageid)).map((member) => {
+      const filteredMembers = jsonData.filter((member) => !members.some((m) => m.id === member.pageid) && !this.filterOut.some((val) => member.title.toLowerCase().includes(val.toLowerCase()))).map((member) => {
         return {id: member.pageid, name: member.title, views: member.views};
       });
       members.push(...filteredMembers);
     }
-    const neededMembers = members.sort((a, b) => b.views - a.views).slice(0, 50); // Sort by views in descending order
+    const neededMembers = members.sort((a, b) => b.views - a.views).slice(350, 400); // Sort by views in descending order
     const wikidataMap = await this.getWikidataIds(neededMembers);
     const wikidataIds = Object.values(wikidataMap);
     const birthDetails = await this.getBirthDetails(wikidataIds);
     const wikipediaDetails = await this.getWikipediaDetails(neededMembers);
-    const maxViews = neededMembers[0].views;
-    const minViews = neededMembers[neededMembers.length - 1].views;
-    const MIN_RATING = 2;
-    const MAX_RATING = 5;
+    const currentMaxViews = neededMembers[0].views;
+    const currentMinViews = neededMembers[neededMembers.length - 1].views;
+    const MIN_RATING = 0;
+    const MAX_RATING = 10;
     const enrichedPeople = await Promise.all(neededMembers.map(async (person) => {
       const wikidataId = wikidataMap[person.id];
       let birthInfo = wikidataId ? birthDetails[wikidataId] : { birthdate: 'Невідомо', birthplace: 'Невідомо' };
@@ -84,14 +87,13 @@ export class WikipediaService {
 
       const wikiInfo = wikipediaDetails[person.id] || { summary: 'Немає опису', image: null };
       const birthplace = birthInfo.birthplace;
-      const rating = MIN_RATING + ((person.views - minViews) / (maxViews - minViews)) * (MAX_RATING - MIN_RATING);
 
       return {
         name: person.name,
-        link: person.link,
+        id: person.id,
         summary: wikiInfo.summary,
         image: wikiInfo.image,
-        rating: rating,
+        views: person.views,
         birthdate: birthInfo.birthdate,
         birthplace: birthplace,
       };
@@ -105,9 +107,28 @@ export class WikipediaService {
           person.birthplace = geocodeResult;
       }
     }
-    await this.saveToFile(enrichedPeople, `./ukr_top_famous_people.json`);
+
+    // enrichedPeople.forEach((person) => {
+    //   const rating = MIN_RATING + ((person.views - currentMinViews) / (currentMaxViews - currentMinViews)) * (MAX_RATING - MIN_RATING);
+    //   //@ts-ignore
+    //   person.rating = rating;
+    // });
+
+    const data = fs.readFileSync(`./ukr_top_famous_people.json`, 'utf8');
+    const json = JSON.parse(data);
+    const maxViews = Math.max(...json.map((item) => item.views), currentMaxViews);
+    const minViews = Math.min(...json.map((item) => item.views), currentMinViews);
+    enrichedPeople.forEach((person) => {
+      const rating = MIN_RATING + ((person.views - minViews) / (maxViews - minViews)) * (MAX_RATING - MIN_RATING);
+      //@ts-ignore
+      person.rating = rating;
+    });
+    json.push(...enrichedPeople);
+    await this.saveToFile(json, `./ukr_top_famous_people.json`);
+
+    // await this.saveToFile(enrichedPeople, `./ukr_top_famous_people.json`);
  
-    return enrichedPeople;
+    return json;
   }
 
   async getFamousPeople() {
@@ -338,6 +359,7 @@ export class WikipediaService {
       if (data && data.features && data.features.length > 0) {
         const result = data.features[0].properties;
         return {
+          birthplace: address,
           lat: result.lat,
           lng: result.lon
         };

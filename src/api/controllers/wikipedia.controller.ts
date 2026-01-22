@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Post } from '@nestjs/common';
 import { WikipediaService } from '../services/wikipedia.service';
 
 @Controller('wikipedia')
@@ -7,16 +7,11 @@ export class WikipediaController {
 
   @Get('famous-people')
   async getFamousPeople() {
-    return await this.wikipediaService.getFamousPeople();
+    return await this.wikipediaService.getAllPeople();
   }
 
-  @Get('top-famous-people')
-  async getTopFamousPeople() {
-    return await this.wikipediaService.getTopFamousPeople();
-  }
-
-  @Get('famous-people-details')
-  async getFamousPeopleDetails() {
-    return await this.wikipediaService.getFamousPeopleWithViews();
+  @Post('sync')
+  async syncDatabase() {
+    return await this.wikipediaService.startSync();
   }
 }

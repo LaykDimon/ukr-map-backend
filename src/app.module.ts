@@ -7,6 +7,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApiModule } from './api/api.module';
 import { User } from './api/entities/user.entity';
 import { Person } from './api/entities/person.entity';
+import { AuthModule } from './api/auth/auth.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { Person } from './api/entities/person.entity';
       synchronize: true,
       logging: false,
     }),
+    AuthModule,
     ApiModule,
   ],
   controllers: [AppController],

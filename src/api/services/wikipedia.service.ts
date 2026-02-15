@@ -36,54 +36,165 @@ export class WikipediaService {
   private readonly WIKIPEDIA_API_URL = 'https://uk.wikipedia.org/w/api.php';
   private readonly REQUEST_DELAY = 500;
   private readonly FETCH_TIMEOUT = 15000;
+  private readonly SPARQL_TIMEOUT = 60000;
+  private readonly SPARQL_BATCH_SIZE = 40;
+  private readonly SPARQL_MAX_RETRIES = 3;
+  private readonly SAVE_BATCH_SIZE = 50;
 
   /**
    * Prefixes to search for people-related categories on Ukrainian Wikipedia.
    * Each prefix is queried via the allcategories API to discover all matching categories.
    */
-  private readonly CATEGORY_PREFIXES = [
-    'Українські ',
-    'Діячі ',
-  ];
+  private readonly CATEGORY_PREFIXES = ['Українські ', 'Діячі '];
 
   /**
    * Keywords that indicate a category contains people (used for filtering).
    */
   private readonly PEOPLE_KEYWORDS = [
-    'письменник', 'поет', 'художник', 'композитор', 'науковц', 'вчен',
-    'політик', 'дипломат', 'військов', 'спортсмен', 'актор', 'актрис',
-    'режисер', 'співак', 'співач', 'музикант', 'філософ', 'історик',
-    'журналіст', 'лікар', 'архітектор', 'скульптор', 'педагог',
-    'священик', 'священник', 'винахідник', 'математик', 'фізик',
-    'хімік', 'біолог', 'економіст', 'правник', 'юрист', 'діяч',
-    'меценат', 'космонавт', 'льотчик', 'генерал', 'адмірал',
-    'гетьман', 'кобзар', 'бандурист', 'драматург', 'перекладач',
-    'мовознавц', 'археолог', 'етнограф', 'географ', 'астроном',
-    'інженер', 'програміст', 'підприєм', 'бізнесмен', 'фотограф',
-    'дизайнер', 'модельєр', 'танцівник', 'танцюрист', 'хореограф',
-    'балетмейстер', 'письменниц', 'поетес', 'піаніст', 'скрипал',
-    'лінгвіст', 'ботанік', 'зоолог', 'геолог', 'психолог',
-    'соціолог', 'культуролог', 'мистецтвознав', 'літературознав',
-    'кінорежисер', 'телеведуч', 'радіоведуч', 'продюсер',
-    'сценарист', 'аніматор', 'ілюстратор', 'каліграф',
-    'олімпійц', 'футболіст', 'боксер', 'борц', 'легкоатлет',
-    'плавц', 'гімнаст', 'шахіст', 'тенісист', 'волейболіст',
-    'баскетболіст', 'біатлоніст', 'велосипедист', 'фехтувальник',
-    'стрілець', 'веслувальник', 'ковзаняр', 'лижник',
-    'партизан', 'розвідник', 'полковник', 'отаман',
-    'релігійн', 'богослов', 'місіонер', 'проповідник',
-    'селекціонер', 'агроном', 'ветеринар', 'фармацевт',
+    'письменник',
+    'поет',
+    'художник',
+    'композитор',
+    'науковц',
+    'вчен',
+    'політик',
+    'дипломат',
+    'військов',
+    'спортсмен',
+    'актор',
+    'актрис',
+    'режисер',
+    'співак',
+    'співач',
+    'музикант',
+    'філософ',
+    'історик',
+    'журналіст',
+    'лікар',
+    'архітектор',
+    'скульптор',
+    'педагог',
+    'священик',
+    'священник',
+    'винахідник',
+    'математик',
+    'фізик',
+    'хімік',
+    'біолог',
+    'економіст',
+    'правник',
+    'юрист',
+    'діяч',
+    'меценат',
+    'космонавт',
+    'льотчик',
+    'генерал',
+    'адмірал',
+    'гетьман',
+    'кобзар',
+    'бандурист',
+    'драматург',
+    'перекладач',
+    'мовознавц',
+    'археолог',
+    'етнограф',
+    'географ',
+    'астроном',
+    'інженер',
+    'програміст',
+    'підприєм',
+    'бізнесмен',
+    'фотограф',
+    'дизайнер',
+    'модельєр',
+    'танцівник',
+    'танцюрист',
+    'хореограф',
+    'балетмейстер',
+    'письменниц',
+    'поетес',
+    'піаніст',
+    'скрипал',
+    'лінгвіст',
+    'ботанік',
+    'зоолог',
+    'геолог',
+    'психолог',
+    'соціолог',
+    'культуролог',
+    'мистецтвознав',
+    'літературознав',
+    'кінорежисер',
+    'телеведуч',
+    'радіоведуч',
+    'продюсер',
+    'сценарист',
+    'аніматор',
+    'ілюстратор',
+    'каліграф',
+    'олімпійц',
+    'футболіст',
+    'боксер',
+    'борц',
+    'легкоатлет',
+    'плавц',
+    'гімнаст',
+    'шахіст',
+    'тенісист',
+    'волейболіст',
+    'баскетболіст',
+    'біатлоніст',
+    'велосипедист',
+    'фехтувальник',
+    'стрілець',
+    'веслувальник',
+    'ковзаняр',
+    'лижник',
+    'партизан',
+    'розвідник',
+    'полковник',
+    'отаман',
+    'релігійн',
+    'богослов',
+    'місіонер',
+    'проповідник',
+    'селекціонер',
+    'агроном',
+    'ветеринар',
+    'фармацевт',
   ];
 
   /**
    * Keywords that indicate a category is NOT about people.
    */
   private readonly EXCLUDE_KEYWORDS = [
-    'організац', 'товариств', 'компані', 'корабл', 'населен',
-    'село ', 'міст ', 'район', 'област', 'вулиц', 'станці',
-    'річк', 'озер', 'гір ', 'фільм', 'альбом', 'книг',
-    'пісн', 'роман', 'серіал', 'відеоігр', 'монумент',
-    'пам\'ятник', 'бібліотек', 'музе', 'стадіон', 'аеропорт',
+    'організац',
+    'товариств',
+    'компані',
+    'корабл',
+    'населен',
+    'село ',
+    'міст ',
+    'район',
+    'област',
+    'вулиц',
+    'станці',
+    'річк',
+    'озер',
+    'гір ',
+    'фільм',
+    'альбом',
+    'книг',
+    'пісн',
+    'роман',
+    'серіал',
+    'відеоігр',
+    'монумент',
+    "пам'ятник",
+    'бібліотек',
+    'музе',
+    'стадіон',
+    'аеропорт',
   ];
 
   /**
@@ -143,18 +254,24 @@ export class WikipediaService {
 
         try {
           const data = await this.fetchFromWiki(params);
-          const categories: { '*': string }[] = data?.query?.allcategories || [];
+          const categories: { '*': string }[] =
+            data?.query?.allcategories || [];
 
           for (const cat of categories) {
             const name = cat['*'];
             const lower = name.toLowerCase();
 
-            const isPeopleRelated = this.PEOPLE_KEYWORDS.some((kw) => lower.includes(kw));
-            const isExcluded = this.EXCLUDE_KEYWORDS.some((kw) => lower.includes(kw));
+            const isPeopleRelated = this.PEOPLE_KEYWORDS.some((kw) =>
+              lower.includes(kw),
+            );
+            const isExcluded = this.EXCLUDE_KEYWORDS.some((kw) =>
+              lower.includes(kw),
+            );
 
             // "Українські " prefix is inherently Ukrainian; other prefixes
             // (e.g. "Діячі ") require an explicit Ukrainian marker in the name.
-            const isUkrainian = prefix === 'Українські ' ||
+            const isUkrainian =
+              prefix === 'Українські ' ||
               this.UKRAINIAN_MARKERS.some((m) => lower.includes(m));
 
             if (isPeopleRelated && !isExcluded && isUkrainian) {
@@ -164,8 +281,10 @@ export class WikipediaService {
 
           accontinue = data?.continue?.accontinue;
           await this.sleep(this.REQUEST_DELAY);
-        } catch (error) {
-          this.logger.error(`Error discovering categories with prefix "${prefix}": ${error.message}`);
+        } catch (error: any) {
+          this.logger.error(
+            `Error discovering categories with prefix "${prefix}": ${error.message}`,
+          );
           break;
         }
       } while (accontinue);
@@ -188,7 +307,9 @@ export class WikipediaService {
 
   async startSync(forceRefresh = false) {
     this.logger.log(`Manual sync started... (forceRefresh: ${forceRefresh})`);
-    this.runFullSyncPipeline(forceRefresh).catch((err) => this.logger.error(err));
+    this.runFullSyncPipeline(forceRefresh).catch((err) =>
+      this.logger.error(err),
+    );
     return { status: 'Sync started in background' };
   }
 
@@ -206,32 +327,29 @@ export class WikipediaService {
     );
 
     try {
-      const people = await this.processCategory(categoryName, limit);
-      const results = { saved: 0, skipped: 0, errors: [] as string[] };
-
-      for (const p of people) {
-        try {
-          await this.saveOrUpdatePerson(p);
-          results.saved++;
-        } catch (e: any) {
-          results.errors.push(`${p.title}: ${e.message}`);
-        }
-      }
+      const { people, existingMap } = await this.processCategory(
+        categoryName,
+        limit,
+      );
+      const { saved, errors: errorCount } = await this.batchSavePersons(
+        people,
+        existingMap,
+      );
 
       await this.recalculateAllRatings();
 
       const log = await this.importLogRepository.save({
         sourceUrl: `uk.wikipedia.org/wiki/${encodeURIComponent(categoryName)}`,
         status: ImportStatus.SUCCESS,
-        message: `Test sync: ${results.saved} saved, ${results.errors.length} errors`,
-        recordsProcessed: results.saved,
+        message: `Test sync: ${saved} saved, ${errorCount} errors`,
+        recordsProcessed: saved,
       });
 
       return {
         status: 'completed',
         totalProcessed: people.length,
-        saved: results.saved,
-        errors: results.errors,
+        saved,
+        errors: errorCount,
         people: people.map((p) => ({
           title: p.title,
           pageid: p.pageid,
@@ -293,24 +411,40 @@ export class WikipediaService {
         }
       }
     }
-    this.logger.log(`Geocode cache pre-warmed with ${this.geocodeCache.size} unique places from DB`);
+    this.logger.log(
+      `Geocode cache pre-warmed with ${this.geocodeCache.size} unique places from DB`,
+    );
 
     const categories = await this.discoverCategories();
     this.logger.log(`Starting full sync with ${categories.length} categories`);
 
-    for (const category of categories) {
+    for (let catIdx = 0; catIdx < categories.length; catIdx++) {
+      const category = categories[catIdx];
+      this.logger.log(
+        `=== Category ${catIdx + 1}/${categories.length}: ${category} ===`,
+      );
       try {
-        const people = await this.processCategory(category, undefined, forceRefresh);
-        for (const p of people) await this.saveOrUpdatePerson(p);
+        const { people, existingMap } = await this.processCategory(
+          category,
+          undefined,
+          forceRefresh,
+        );
+
+        const { saved: savedCount, errors: errorCount } =
+          await this.batchSavePersons(people, existingMap);
 
         await this.importLogRepository.save({
           sourceUrl: `uk.wikipedia.org/wiki/${encodeURIComponent(category)}`,
           status: ImportStatus.SUCCESS,
-          message: `Processed ${people.length} people`,
-          recordsProcessed: people.length,
+          message: `Processed ${people.length} people (saved: ${savedCount}, errors: ${errorCount})`,
+          recordsProcessed: savedCount,
         });
 
-        await this.sleep(2000);
+        this.logger.log(
+          `Category done: ${savedCount} saved, ${errorCount} errors`,
+        );
+        // Only sleep between categories that actually did work
+        if (people.length > 0) await this.sleep(2000);
       } catch (e: any) {
         this.logger.error(
           `Failed to process category ${category}: ${e.message}`,
@@ -333,8 +467,10 @@ export class WikipediaService {
     categoryName: string,
     limit?: number,
     forceRefresh = false,
-  ): Promise<WikiPerson[]> {
-    this.logger.log(`Processing category: ${categoryName}${limit ? ` (limit: ${limit})` : ' (all members)'}`);
+  ): Promise<{ people: WikiPerson[]; existingMap: Map<number, Person> }> {
+    this.logger.log(
+      `Processing category: ${categoryName}${limit ? ` (limit: ${limit})` : ' (all members)'}`,
+    );
 
     const rawMembers = await this.fetchCategoryMembers(categoryName);
     const filteredMembers = rawMembers.filter((m) => !this.isIgnored(m.title));
@@ -347,53 +483,74 @@ export class WikipediaService {
       filteredMembers.map((m) => m.pageid),
     );
 
-    // When not forcing refresh, skip members that are fully cached in DB
+    // When not forcing refresh, skip members that already exist in the DB.
+    // This ensures a crashed/re-started sync resumes quickly without re-fetching
+    // data for thousands of already-saved persons.
     let membersToProcess: { pageid: number; title: string }[];
     if (!forceRefresh) {
-      membersToProcess = filteredMembers.filter((m) => {
-        const existing = existingMap.get(m.pageid);
-        if (!existing) return true; // new person, needs processing
-        // Skip if fully cached: has coords, summary, image, and meta_data
-        const hasMetaData = existing.meta_data && Object.keys(existing.meta_data).length > 0;
-        const isComplete = existing.lat && existing.summary && existing.imageUrl && hasMetaData && existing.views > 0;
-        return !isComplete;
-      });
+      membersToProcess = filteredMembers.filter(
+        (m) => !existingMap.has(m.pageid),
+      );
       const skipped = filteredMembers.length - membersToProcess.length;
       if (skipped > 0) {
-        this.logger.log(`Skipping ${skipped} fully-cached persons, processing ${membersToProcess.length} new/incomplete`);
+        this.logger.log(
+          `Skipping ${skipped} existing persons (forceRefresh=false), processing ${membersToProcess.length} new`,
+        );
       }
     } else {
       membersToProcess = filteredMembers;
     }
 
     if (membersToProcess.length === 0) {
-      this.logger.log(`All ${filteredMembers.length} persons already cached — nothing to do`);
-      return [];
+      this.logger.log(
+        `All ${filteredMembers.length} persons already cached — nothing to do`,
+      );
+      return { people: [], existingMap };
     }
 
     let topMembers: RawMember[];
     if (limit) {
       const subset = membersToProcess.slice(0, limit * 3);
-      const withViews = await this.enrichWithViews(subset, forceRefresh, existingMap);
+      const withViews = await this.enrichWithViews(
+        subset,
+        forceRefresh,
+        existingMap,
+      );
       topMembers = withViews.slice(0, limit);
     } else {
-      topMembers = await this.enrichWithViews(membersToProcess, forceRefresh, existingMap);
+      topMembers = await this.enrichWithViews(
+        membersToProcess,
+        forceRefresh,
+        existingMap,
+      );
     }
 
     // Validate that entries are actually humans via Wikidata P31=Q5
-    const validatedMembers = await this.filterHumansOnly(topMembers, existingMap);
+    const validatedMembers = await this.filterHumansOnly(
+      topMembers,
+      existingMap,
+    );
     this.logger.log(
       `${validatedMembers.length}/${topMembers.length} confirmed as humans via Wikidata.`,
     );
 
-    const detailedMembers = await this.enrichWithDetails(validatedMembers, existingMap);
+    const detailedMembers = await this.enrichWithDetails(
+      validatedMembers,
+      existingMap,
+    );
 
-    const geocodedMembers = await this.enrichWithCoordinates(detailedMembers, existingMap);
-    return geocodedMembers.map((person) => ({
-      ...person,
-      category: categoryName,
-      rating: this.calculateRating(person.views),
-    }));
+    const geocodedMembers = await this.enrichWithCoordinates(
+      detailedMembers,
+      existingMap,
+    );
+    return {
+      people: geocodedMembers.map((person) => ({
+        ...person,
+        category: categoryName,
+        rating: this.calculateRating(person.views),
+      })),
+      existingMap,
+    };
   }
 
   /**
@@ -464,16 +621,24 @@ export class WikipediaService {
   private isNonPersonTitle(title: string): boolean {
     const lower = title.toLowerCase();
     const nonPersonPrefixes = [
-      'список', 'перелік', 'категорія:', 'шаблон:', 'вікіпедія:',
-      'файл:', 'портал:', 'модуль:', 'довідка:', 'медіавікі:',
+      'список',
+      'перелік',
+      'категорія:',
+      'шаблон:',
+      'вікіпедія:',
+      'файл:',
+      'портал:',
+      'модуль:',
+      'довідка:',
+      'медіавікі:',
     ];
     const nonPersonPatterns = [
-      /\(значення\)$/,       // disambiguation pages
-      /\(термін\)$/,         // terminology pages
-      /\bісторія\s/i,        // "Історія ..."
-      /\bхронологія\b/i,     // "Хронологія ..."
-      /\bнагороди\b/i,       // award list articles
-      /\bбібліографія\b/i,   // bibliography articles
+      /\(значення\)$/, // disambiguation pages
+      /\(термін\)$/, // terminology pages
+      /\bісторія\s/i, // "Історія ..."
+      /\bхронологія\b/i, // "Хронологія ..."
+      /\bнагороди\b/i, // award list articles
+      /\bбібліографія\b/i, // bibliography articles
     ];
 
     if (nonPersonPrefixes.some((p) => lower.startsWith(p))) return true;
@@ -484,6 +649,7 @@ export class WikipediaService {
   /**
    * Filter members to only include entries that are humans (Wikidata P31 = Q5).
    * Entries already in the DB are assumed valid and pass through.
+   * SPARQL queries are batched to avoid timeouts on large sets.
    */
   private async filterHumansOnly(
     members: RawMember[],
@@ -507,68 +673,66 @@ export class WikipediaService {
     const wikidataMap = await this.fetchWikidataIds(
       toCheck.map((m) => m.pageid),
     );
-    const wdIds = Object.values(wikidataMap);
+    const allWdIds = Object.values(wikidataMap);
 
-    if (wdIds.length === 0) return result;
+    if (allWdIds.length === 0) return result;
 
-    // SPARQL query: check which Wikidata entities are instance of human (Q5)
-    try {
-      const idsString = wdIds.map((id) => `wd:${id}`).join(' ');
+    // Collect all confirmed human WD IDs across batches
+    const humanWdIds = new Set<string>();
+    let sparqlFailed = false;
+
+    // Batch SPARQL queries to avoid Wikidata timeout
+    for (let i = 0; i < allWdIds.length; i += this.SPARQL_BATCH_SIZE) {
+      const batchIds = allWdIds.slice(i, i + this.SPARQL_BATCH_SIZE);
+      const idsString = batchIds.map((id) => `wd:${id}`).join(' ');
       const sparqlQuery = `
         SELECT ?person WHERE {
           VALUES ?person { ${idsString} }
           ?person wdt:P31 wd:Q5.
         }
       `;
-      const response = await fetch('https://query.wikidata.org/sparql', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-          'User-Agent': 'UkrMapDiplomaBot/1.0 (student_project_test)',
-        },
-        body: new URLSearchParams({ query: sparqlQuery, format: 'json' }),
-        signal: AbortSignal.timeout(this.FETCH_TIMEOUT),
-      });
 
-      if (!response.ok) {
-        this.logger.warn(
-          `Human check SPARQL failed (${response.status}), allowing all entries through`,
-        );
-        return [...result, ...toCheck];
-      }
-
-      const data = await response.json();
-      const humanWdIds = new Set<string>(
-        data.results.bindings.map((b) => b.person.value.split('/').pop()),
-      );
-
-      // Reverse map: wdId → pageId
-      const wdToPage = new Map<string, number>();
-      for (const [pageId, wdId] of Object.entries(wikidataMap)) {
-        wdToPage.set(wdId, Number(pageId));
-      }
-
-      for (const member of toCheck) {
-        const wdId = wikidataMap[member.pageid];
-        if (wdId && humanWdIds.has(wdId)) {
-          result.push(member);
-        } else if (!wdId) {
-          // No Wikidata ID — can't verify, skip to be safe
-          this.logger.warn(
-            `Skipping "${member.title}" — no Wikidata ID, cannot verify as human`,
-          );
+      try {
+        const data = await this.fetchSparqlWithRetry(sparqlQuery);
+        if (data) {
+          for (const b of data.results.bindings) {
+            humanWdIds.add(b.person.value.split('/').pop());
+          }
         } else {
-          this.logger.warn(
-            `Filtered out non-human entry: "${member.title}" (${wdId})`,
-          );
+          sparqlFailed = true;
+          break;
         }
+      } catch (error: any) {
+        this.logger.warn(`Human check SPARQL batch failed: ${error.message}`);
+        sparqlFailed = true;
+        break;
       }
-    } catch (error) {
+
+      if (i + this.SPARQL_BATCH_SIZE < allWdIds.length) {
+        await this.sleep(this.REQUEST_DELAY);
+      }
+    }
+
+    if (sparqlFailed) {
       this.logger.warn(
-        `Human check failed: ${error.message}. Allowing all entries through.`,
+        'Human check SPARQL failed — allowing all entries through',
       );
       return [...result, ...toCheck];
+    }
+
+    for (const member of toCheck) {
+      const wdId = wikidataMap[member.pageid];
+      if (wdId && humanWdIds.has(wdId)) {
+        result.push(member);
+      } else if (!wdId) {
+        this.logger.warn(
+          `Skipping "${member.title}" — no Wikidata ID, cannot verify as human`,
+        );
+      } else {
+        this.logger.warn(
+          `Filtered out non-human entry: "${member.title}" (${wdId})`,
+        );
+      }
     }
 
     return result;
@@ -619,7 +783,9 @@ export class WikipediaService {
     }
 
     if (cachedCount > 0) {
-      this.logger.log(`Views: ${cachedCount} cached, ${fetchedCount} fetched from API`);
+      this.logger.log(
+        `Views: ${cachedCount} cached, ${fetchedCount} fetched from API`,
+      );
     }
 
     return results.sort((a, b) => b.views - a.views);
@@ -751,16 +917,133 @@ export class WikipediaService {
     return result;
   }
 
-  private async saveOrUpdatePerson(data: WikiPerson) {
-    // Use entity resolution for fuzzy deduplication
-    const existing = await this.entityResolution.findDuplicate(
-      data.title,
-      data.pageid,
-    );
+  /**
+   * Save or update persons in batches. Uses the pre-loaded existingMap to avoid
+   * redundant DB lookups. New persons are bulk-inserted, PostGIS updates are batched.
+   */
+  private async batchSavePersons(
+    people: WikiPerson[],
+    existingMap: Map<number, Person>,
+  ): Promise<{ saved: number; errors: number }> {
+    let saved = 0;
+    let errors = 0;
+
+    for (let i = 0; i < people.length; i += this.SAVE_BATCH_SIZE) {
+      const batch = people.slice(i, i + this.SAVE_BATCH_SIZE);
+      const newPayloads: any[] = [];
+      const updateOps: {
+        id: string;
+        payload: any;
+        lat?: number;
+        lng?: number;
+      }[] = [];
+      const newWithCoords: { index: number; lat: number; lng: number }[] = [];
+
+      for (const person of batch) {
+        try {
+          const result = this.buildPersonPayload(person, existingMap);
+          if (!result) continue; // skipped (manual entry)
+
+          if (result.existingId) {
+            updateOps.push({
+              id: result.existingId,
+              payload: result.payload,
+              lat: person.lat ?? undefined,
+              lng: person.lng ?? undefined,
+            });
+          } else {
+            newPayloads.push(result.payload);
+            if (person.lat && person.lng) {
+              newWithCoords.push({
+                index: newPayloads.length - 1,
+                lat: person.lat,
+                lng: person.lng,
+              });
+            }
+          }
+        } catch (err: any) {
+          errors++;
+          this.logger.warn(
+            `Failed to prepare "${person.title}": ${err.message}`,
+          );
+        }
+      }
+
+      // Bulk insert new persons
+      if (newPayloads.length > 0) {
+        try {
+          const savedEntities = await this.personRepository.save(newPayloads);
+          saved += savedEntities.length;
+
+          // Batch PostGIS update for new persons with coordinates
+          const geoUpdates = newWithCoords
+            .map((c) => ({
+              id: savedEntities[c.index]?.id,
+              lat: c.lat,
+              lng: c.lng,
+            }))
+            .filter((g) => g.id);
+          if (geoUpdates.length > 0) {
+            const cases = geoUpdates
+              .map(
+                (g, idx) =>
+                  `WHEN id = $${idx * 3 + 1} THEN ST_SetSRID(ST_MakePoint($${idx * 3 + 2}, $${idx * 3 + 3}), 4326)`,
+              )
+              .join(' ');
+            const ids = geoUpdates.map((g) => `'${g.id}'`).join(',');
+            const params = geoUpdates.flatMap((g) => [g.id, g.lng, g.lat]);
+            await this.personRepository.query(
+              `UPDATE person SET "birthLocation" = CASE ${cases} END WHERE id IN (${ids})`,
+              params,
+            );
+          }
+        } catch (err: any) {
+          errors += newPayloads.length;
+          this.logger.warn(`Bulk insert failed: ${err.message}`);
+        }
+      }
+
+      // Process updates (per-person, since each has a different payload)
+      for (const op of updateOps) {
+        try {
+          await this.personRepository.update(op.id, op.payload);
+          if (op.lat && op.lng) {
+            await this.personRepository.query(
+              `UPDATE person SET "birthLocation" = ST_SetSRID(ST_MakePoint($1, $2), 4326) WHERE id = $3`,
+              [op.lng, op.lat, op.id],
+            );
+          }
+          saved++;
+        } catch (err: any) {
+          errors++;
+          this.logger.warn(`Failed to update person ${op.id}: ${err.message}`);
+        }
+      }
+
+      if (i + this.SAVE_BATCH_SIZE < people.length) {
+        this.logger.log(
+          `Saved batch ${Math.floor(i / this.SAVE_BATCH_SIZE) + 1}/${Math.ceil(people.length / this.SAVE_BATCH_SIZE)}`,
+        );
+      }
+    }
+
+    return { saved, errors };
+  }
+
+  /**
+   * Build the DB payload for a person, using the pre-loaded existingMap
+   * to avoid redundant findDuplicate queries.
+   * Returns null if the person should be skipped (manual entry).
+   */
+  private buildPersonPayload(
+    data: WikiPerson,
+    existingMap: Map<number, Person>,
+  ): { payload: any; existingId?: string } | null {
+    // Use pre-loaded map instead of per-person DB query
+    const existing = existingMap.get(data.pageid) || null;
 
     if (existing && existing.isManual) {
-      this.logger.log(`Skipping manual entry: ${existing.name}`);
-      return;
+      return null;
     }
 
     // Normalize birth place and map category label
@@ -803,9 +1086,10 @@ export class WikipediaService {
       lng: data.lng,
       meta_data: {
         ...(existing?.meta_data || {}),
-        occupation: occupationData.occupations.length > 0
-          ? occupationData.occupations
-          : existing?.meta_data?.occupation,
+        occupation:
+          occupationData.occupations.length > 0
+            ? occupationData.occupations
+            : existing?.meta_data?.occupation,
         deathPlace: data.deathPlace || existing?.meta_data?.deathPlace,
         deathYear: data.deathDate
           ? this.entityResolution.extractBirthYear(data.deathDate)
@@ -813,23 +1097,7 @@ export class WikipediaService {
       },
     };
 
-    if (existing) {
-      await this.personRepository.update(existing.id, payload);
-      if (data.lat && data.lng) {
-        await this.personRepository.query(
-          `UPDATE person SET "birthLocation" = ST_SetSRID(ST_MakePoint($1, $2), 4326) WHERE id = $3`,
-          [data.lng, data.lat, existing.id],
-        );
-      }
-    } else {
-      const saved = await this.personRepository.save(payload);
-      if (data.lat && data.lng) {
-        await this.personRepository.query(
-          `UPDATE person SET "birthLocation" = ST_SetSRID(ST_MakePoint($1, $2), 4326) WHERE id = $3`,
-          [data.lng, data.lat, saved.id],
-        );
-      }
-    }
+    return { payload, existingId: existing?.id };
   }
 
   /**
@@ -938,7 +1206,7 @@ export class WikipediaService {
         if (i + BATCH_SIZE < pageIds.length) {
           await this.sleep(this.REQUEST_DELAY);
         }
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(
           `Error fetching Wikidata IDs (batch ${i / BATCH_SIZE + 1}): ${error.message}`,
         );
@@ -948,9 +1216,65 @@ export class WikipediaService {
     return wikidataMap;
   }
 
-  private async fetchSparqlDetails(
-    wdIds: string[],
-  ): Promise<
+  /**
+   * Execute a SPARQL query against Wikidata with retry + exponential backoff.
+   * Returns parsed JSON or null on total failure.
+   */
+  private async fetchSparqlWithRetry(sparqlQuery: string): Promise<any | null> {
+    for (let attempt = 1; attempt <= this.SPARQL_MAX_RETRIES; attempt++) {
+      try {
+        const response = await fetch('https://query.wikidata.org/sparql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Accept: 'application/json',
+            'User-Agent': 'UkrMapDiplomaBot/1.0 (student_project_test)',
+          },
+          body: new URLSearchParams({ query: sparqlQuery, format: 'json' }),
+          signal: AbortSignal.timeout(this.SPARQL_TIMEOUT),
+        });
+
+        if (response.ok) {
+          return await response.json();
+        }
+
+        // Rate-limited or server error — retry
+        if (
+          attempt < this.SPARQL_MAX_RETRIES &&
+          (response.status === 429 || response.status >= 500)
+        ) {
+          const delay = 5000 * Math.pow(2, attempt - 1); // 5s, 10s, 20s
+          this.logger.warn(
+            `SPARQL returned ${response.status}, retrying in ${delay}ms (attempt ${attempt}/${this.SPARQL_MAX_RETRIES})`,
+          );
+          await this.sleep(delay);
+          continue;
+        }
+
+        const errorText = await response.text();
+        this.logger.error(
+          `SPARQL failed with status ${response.status}: ${errorText.slice(0, 200)}`,
+        );
+        return null;
+      } catch (error: any) {
+        if (attempt < this.SPARQL_MAX_RETRIES) {
+          const delay = 5000 * Math.pow(2, attempt - 1);
+          this.logger.warn(
+            `SPARQL error: ${error.message}. Retrying in ${delay}ms (attempt ${attempt}/${this.SPARQL_MAX_RETRIES})`,
+          );
+          await this.sleep(delay);
+        } else {
+          this.logger.error(
+            `SPARQL failed after ${this.SPARQL_MAX_RETRIES} attempts: ${error.message}`,
+          );
+          return null;
+        }
+      }
+    }
+    return null;
+  }
+
+  private async fetchSparqlDetails(wdIds: string[]): Promise<
     Record<
       string,
       {
@@ -963,72 +1287,79 @@ export class WikipediaService {
   > {
     if (wdIds.length === 0) return {};
 
-    try {
-      const idsString = wdIds.map((id) => `wd:${id}`).join(' ');
-      const sparqlQuery = `
-        SELECT ?person ?birthdate ?birthplaceLabel ?deathdate
-               (GROUP_CONCAT(DISTINCT ?occupationLabel; separator="|") AS ?occupations)
-        WHERE {
-          VALUES ?person { ${idsString} }
-          OPTIONAL { ?person wdt:P569 ?birthdate. }
-          OPTIONAL { ?person wdt:P570 ?deathdate. }
-          OPTIONAL { ?person wdt:P19 ?birthplace. }
-          OPTIONAL {
-            ?person wdt:P106 ?occupation.
-            ?occupation rdfs:label ?occupationLabel.
-            FILTER(LANG(?occupationLabel) = "uk")
+    const resultMap: Record<
+      string,
+      {
+        birthDate: string;
+        birthPlace: string;
+        occupations: string[];
+        deathDate: string | null;
+      }
+    > = {};
+
+    // Process in batches to avoid Wikidata SPARQL timeout
+    for (let i = 0; i < wdIds.length; i += this.SPARQL_BATCH_SIZE) {
+      const batch = wdIds.slice(i, i + this.SPARQL_BATCH_SIZE);
+      const batchNum = Math.floor(i / this.SPARQL_BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(wdIds.length / this.SPARQL_BATCH_SIZE);
+
+      this.logger.log(
+        `SPARQL details batch ${batchNum}/${totalBatches} (${batch.length} IDs)`,
+      );
+
+      try {
+        const idsString = batch.map((id) => `wd:${id}`).join(' ');
+        const sparqlQuery = `
+          SELECT ?person ?birthdate ?birthplaceLabel ?deathdate
+                 (GROUP_CONCAT(DISTINCT ?occupationLabel; separator="|") AS ?occupations)
+          WHERE {
+            VALUES ?person { ${idsString} }
+            OPTIONAL { ?person wdt:P569 ?birthdate. }
+            OPTIONAL { ?person wdt:P570 ?deathdate. }
+            OPTIONAL { ?person wdt:P19 ?birthplace. }
+            OPTIONAL {
+              ?person wdt:P106 ?occupation.
+              ?occupation rdfs:label ?occupationLabel.
+              FILTER(LANG(?occupationLabel) = "uk")
+            }
+            SERVICE wikibase:label { bd:serviceParam wikibase:language "uk". }
           }
-          SERVICE wikibase:label { bd:serviceParam wikibase:language "uk". }
-        }
-        GROUP BY ?person ?birthdate ?birthplaceLabel ?deathdate
-      `;
-      const response = await fetch('https://query.wikidata.org/sparql', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-          'User-Agent': 'UkrMapDiplomaBot/1.0 (student_project_test)',
-        },
-        body: new URLSearchParams({
-          query: sparqlQuery,
-          format: 'json',
-        }),
-        signal: AbortSignal.timeout(this.FETCH_TIMEOUT),
-      });
+          GROUP BY ?person ?birthdate ?birthplaceLabel ?deathdate
+        `;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Status: ${response.status}. Msg: ${errorText}`);
+        const data = await this.fetchSparqlWithRetry(sparqlQuery);
+
+        if (data) {
+          for (const result of data.results.bindings) {
+            const wikidataId = result.person.value.split('/').pop()!;
+            const occupationsStr = result?.occupations?.value || '';
+            resultMap[wikidataId] = {
+              birthDate: result?.birthdate?.value.split('T')[0] || null,
+              birthPlace: result?.birthplaceLabel?.value || null,
+              occupations: occupationsStr
+                ? occupationsStr.split('|').filter(Boolean)
+                : [],
+              deathDate: result?.deathdate?.value.split('T')[0] || null,
+            };
+          }
+        } else {
+          this.logger.warn(
+            `SPARQL details batch ${batchNum} failed — continuing with partial data`,
+          );
+        }
+      } catch (error: any) {
+        this.logger.error(
+          `Error in SPARQL details batch ${batchNum}: ${error.message}`,
+        );
+        // Continue with next batch instead of losing everything
       }
 
-      const data = await response.json();
-      const resultMap: Record<
-        string,
-        {
-          birthDate: string;
-          birthPlace: string;
-          occupations: string[];
-          deathDate: string | null;
-        }
-      > = {};
-
-      for (const result of data.results.bindings) {
-        const wikidataId = result.person.value.split('/').pop()!;
-        const occupationsStr = result?.occupations?.value || '';
-        resultMap[wikidataId] = {
-          birthDate: result?.birthdate?.value.split('T')[0] || null,
-          birthPlace: result?.birthplaceLabel?.value || null,
-          occupations: occupationsStr
-            ? occupationsStr.split('|').filter(Boolean)
-            : [],
-          deathDate: result?.deathdate?.value.split('T')[0] || null,
-        };
+      if (i + this.SPARQL_BATCH_SIZE < wdIds.length) {
+        await this.sleep(this.REQUEST_DELAY);
       }
-      return resultMap;
-    } catch (error) {
-      this.logger.error(`Error fetching SPARQL details: ${error.message}`);
-      return {};
     }
+
+    return resultMap;
   }
 
   private async fetchWikiTextDetails(
@@ -1063,17 +1394,14 @@ export class WikipediaService {
           const page = data.query.pages[pageId];
           detailsMap[Number(pageId)] = {
             summary: page.extract || page.description || null,
-            image:
-              page.original?.source ||
-              page.thumbnail?.source ||
-              null,
+            image: page.original?.source || page.thumbnail?.source || null,
           };
         }
 
         if (i + BATCH_SIZE < pageIds.length) {
           await this.sleep(this.REQUEST_DELAY);
         }
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(
           `Error fetching Wiki text details (batch ${i / BATCH_SIZE + 1}): ${error.message}`,
         );
@@ -1141,7 +1469,7 @@ export class WikipediaService {
         });
       }
       return { birthDate, birthPlace };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.warn(
         `Fallback parsing failed for page ${pageId}: ${error.message}`,
       );
@@ -1172,7 +1500,7 @@ export class WikipediaService {
         };
       }
       return null;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(
         `Error geocoding address "${address}": ${error.message}`,
       );

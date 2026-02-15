@@ -7,6 +7,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApiModule } from './api/api.module';
 import { User } from './api/entities/user.entity';
 import { Person } from './api/entities/person.entity';
+import { ImportLog } from './api/entities/import-log.entity';
+import { ProposedEdit } from './api/entities/proposed-edit.entity';
 import { AuthModule } from './api/auth/auth.module';
 
 @Module({
@@ -20,9 +22,14 @@ import { AuthModule } from './api/auth/auth.module';
       username: process.env.DB_USERNAME || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_NAME || 'ukrmap',
-      entities: [User, Person],
-      synchronize: true,
-      logging: false,
+      entities: [User, Person, ImportLog, ProposedEdit],
+      synchronize: process.env.NODE_ENV !== 'production',
+      logging: process.env.NODE_ENV === 'development',
+      extra: {
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+      },
     }),
     AuthModule,
     ApiModule,

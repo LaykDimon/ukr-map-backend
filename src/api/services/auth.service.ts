@@ -38,7 +38,7 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(
       password,
-      parseInt(process.env.SALT_ROUNDS) || 12,
+      parseInt(process.env.SALT_ROUNDS || '12', 10),
     );
 
     const user = this.usersRepository.create({

@@ -24,9 +24,28 @@ export class WikipediaController {
   constructor(private readonly wikipediaService: WikipediaService) {}
 
   @Get('famous-people')
-  @ApiOperation({ summary: 'Get all famous people from the database' })
-  async getFamousPeople() {
-    return await this.wikipediaService.getAllPeople();
+  @ApiOperation({
+    summary: 'Get famous people from the database (supports pagination)',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Number of records to skip',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Max records to return (default: all)',
+  })
+  async getFamousPeople(
+    @Query('offset') offset?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const off = offset ? parseInt(offset, 10) : undefined;
+    const lim = limit ? parseInt(limit, 10) : undefined;
+    return await this.wikipediaService.getAllPeople(off, lim);
   }
 
   @Post('sync')

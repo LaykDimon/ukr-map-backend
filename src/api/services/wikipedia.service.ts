@@ -299,9 +299,11 @@ export class WikipediaService {
     return Array.from(discovered);
   }
 
-  async getAllPeople(): Promise<Person[]> {
+  async getAllPeople(offset?: number, limit?: number): Promise<Person[]> {
     return this.personRepository.find({
       order: { rating: 'DESC' },
+      ...(offset != null ? { skip: offset } : {}),
+      ...(limit != null ? { take: limit } : {}),
     });
   }
 

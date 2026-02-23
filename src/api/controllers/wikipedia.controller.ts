@@ -76,18 +76,6 @@ export class WikipediaController {
     return this.wikipediaService.getSyncStatus();
   }
 
-  @Post('backfill-death-places')
-  @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles(UserRole.ADMIN)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary:
-      'Backfill death places for existing persons without re-syncing (admin only)',
-  })
-  async backfillDeathPlaces() {
-    return this.wikipediaService.startBackfillDeathPlaces();
-  }
-
   @Post('sync-category')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles(UserRole.ADMIN)

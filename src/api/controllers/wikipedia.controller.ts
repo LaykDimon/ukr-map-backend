@@ -58,6 +58,36 @@ export class WikipediaController {
     return await this.wikipediaService.startSync(forceRefresh === 'true');
   }
 
+  @Post('sync/stop')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Stop an ongoing Wikipedia sync (admin only)' })
+  async stopSync() {
+    return this.wikipediaService.stopSync();
+  }
+
+  @Get('sync/status')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Check whether a sync is currently running' })
+  async getSyncStatus() {
+    return this.wikipediaService.getSyncStatus();
+  }
+
+  @Post('backfill-death-places')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Backfill death places for existing persons without re-syncing (admin only)',
+  })
+  async backfillDeathPlaces() {
+    return this.wikipediaService.startBackfillDeathPlaces();
+  }
+
   @Post('sync-category')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles(UserRole.ADMIN)

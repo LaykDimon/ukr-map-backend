@@ -64,6 +64,27 @@ export class StatisticsService {
   }
 
   /**
+   * Distribution of persons by death place (top N).
+   */
+  async getDeathPlaceDistribution(
+    limit = 20,
+  ): Promise<{ deathPlace: string; count: number }[]> {
+    const results = await this.personRepository.query(
+      `SELECT meta_data->>'deathPlace' AS "deathPlace", COUNT(*)::int AS count
+       FROM person
+       WHERE meta_data->>'deathPlace' IS NOT NULL AND meta_data->>'deathPlace' != ''
+       GROUP BY meta_data->>'deathPlace'
+       ORDER BY count DESC
+       LIMIT $1`,
+      [limit],
+    );
+    return results.map((r: any) => ({
+      deathPlace: r.deathPlace,
+      count: r.count,
+    }));
+  }
+
+  /**
    * Overview statistics.
    */
   async getOverview(): Promise<{

@@ -40,6 +40,8 @@ export class WikipediaService {
   private readonly SPARQL_BATCH_SIZE = 40;
   private readonly SPARQL_MAX_RETRIES = 3;
   private readonly SAVE_BATCH_SIZE = 50;
+  private syncAborted = false;
+  private isSyncing = false;
 
   /**
    * Prefixes to search for people-related categories on Ukrainian Wikipedia.
@@ -309,10 +311,173 @@ export class WikipediaService {
 
   async startSync(forceRefresh = false) {
     this.logger.log(`Manual sync started... (forceRefresh: ${forceRefresh})`);
-    this.runFullSyncPipeline(forceRefresh).catch((err) =>
-      this.logger.error(err),
+    this.syncAborted = false;
+    this.isSyncing = true;
+    this.runFullSyncPipeline(forceRefresh)
+      .catch((err) => this.logger.error(err))
+      .finally(() => {
+        this.isSyncing = false;
+      });
+    return { status: 'Sync started in background', syncing: true };
+  }
+
+  stopSync() {
+    this.logger.log('Sync stop requested');
+    this.syncAborted = true;
+    return { status: 'Sync stop requested' };
+  }
+
+  getSyncStatus() {
+    return { syncing: this.isSyncing };
+  }
+
+  /**
+   * Backfill deathPlace for all existing persons that don't have one.
+   * Much faster than a full re-sync — only fetches Wikidata IDs + SPARQL death places.
+   */
+  async startBackfillDeathPlaces() {
+    if (this.isSyncing) {
+      return { status: 'A sync is already running', syncing: true };
+    }
+    this.isSyncing = true;
+    this.syncAborted = false;
+    this.backfillDeathPlaces()
+      .catch((err) => this.logger.error(`Backfill failed: ${err.message}`))
+      .finally(() => {
+        this.isSyncing = false;
+      });
+    return {
+      status: 'Death place backfill started in background',
+      syncing: true,
+    };
+  }
+
+  private async backfillDeathPlaces() {
+    // Find all persons with wikiPageId that have no deathPlace in meta_data
+    const persons = await this.personRepository
+      .createQueryBuilder('p')
+      .select(['p.id', 'p.wikiPageId', 'p.name', 'p.meta_data'])
+      .where('p.wikiPageId IS NOT NULL')
+      .andWhere(
+        `(p.meta_data->>'deathPlace' IS NULL OR p.meta_data->>'deathPlace' = '')`,
+      )
+      .getMany();
+
+    this.logger.log(
+      `Death place backfill: ${persons.length} persons to process`,
     );
-    return { status: 'Sync started in background' };
+    if (persons.length === 0) return;
+
+    const pageIds = persons.map((p) => p.wikiPageId);
+    const personByPageId = new Map(persons.map((p) => [p.wikiPageId, p]));
+
+    // Step 1: Get Wikidata IDs
+    this.logger.log('Backfill step 1/3: Fetching Wikidata IDs...');
+    const wikidataMap = await this.fetchWikidataIds(pageIds);
+    this.logger.log(
+      `Got ${Object.keys(wikidataMap).length} Wikidata IDs for ${pageIds.length} pages`,
+    );
+
+    if (this.syncAborted) {
+      this.logger.log('Backfill aborted');
+      return;
+    }
+
+    // Step 2: SPARQL query for death places only
+    this.logger.log(
+      'Backfill step 2/3: Querying death places from Wikidata...',
+    );
+    const wdIds = Object.values(wikidataMap);
+    const deathPlaceMap = new Map<string, string>(); // wikidataId -> deathPlace
+
+    for (let i = 0; i < wdIds.length; i += this.SPARQL_BATCH_SIZE) {
+      if (this.syncAborted) {
+        this.logger.log('Backfill aborted');
+        return;
+      }
+
+      const batch = wdIds.slice(i, i + this.SPARQL_BATCH_SIZE);
+      const batchNum = Math.floor(i / this.SPARQL_BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(wdIds.length / this.SPARQL_BATCH_SIZE);
+
+      try {
+        const idsString = batch.map((id) => `wd:${id}`).join(' ');
+        const sparqlQuery = `
+          SELECT ?person ?deathplaceLabel WHERE {
+            VALUES ?person { ${idsString} }
+            ?person wdt:P20 ?deathplace.
+            SERVICE wikibase:label { bd:serviceParam wikibase:language "uk,en". }
+          }
+        `;
+        const data = await this.fetchSparqlWithRetry(sparqlQuery);
+        if (data) {
+          for (const result of data.results.bindings) {
+            const wdId = result.person.value.split('/').pop()!;
+            const place = result?.deathplaceLabel?.value;
+            if (place) deathPlaceMap.set(wdId, place);
+          }
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `Backfill SPARQL batch ${batchNum} failed: ${err.message}`,
+        );
+      }
+
+      if (batchNum % 50 === 0) {
+        this.logger.log(
+          `Backfill SPARQL progress: ${batchNum}/${totalBatches} batches, ${deathPlaceMap.size} death places found`,
+        );
+      }
+
+      if (i + this.SPARQL_BATCH_SIZE < wdIds.length) {
+        await this.sleep(this.REQUEST_DELAY);
+      }
+    }
+
+    this.logger.log(`Found ${deathPlaceMap.size} death places from Wikidata`);
+
+    // Step 3: Update persons in DB
+    this.logger.log('Backfill step 3/3: Updating database...');
+    let updated = 0;
+
+    // Build reverse map: pageId -> deathPlace
+    const pageIdToDeathPlace = new Map<number, string>();
+    for (const [pageId, wdId] of Object.entries(wikidataMap)) {
+      const place = deathPlaceMap.get(wdId);
+      if (place) pageIdToDeathPlace.set(Number(pageId), place);
+    }
+
+    // Batch update
+    const entries = Array.from(pageIdToDeathPlace.entries());
+    for (let i = 0; i < entries.length; i += this.SAVE_BATCH_SIZE) {
+      const batch = entries.slice(i, i + this.SAVE_BATCH_SIZE);
+      for (const [pageId, deathPlace] of batch) {
+        const person = personByPageId.get(pageId);
+        if (!person) continue;
+        try {
+          await this.personRepository.update(person.id, {
+            meta_data: {
+              ...person.meta_data,
+              deathPlace,
+            },
+          });
+          updated++;
+        } catch (err: any) {
+          this.logger.warn(
+            `Failed to update deathPlace for "${person.name}": ${err.message}`,
+          );
+        }
+      }
+      if (i + this.SAVE_BATCH_SIZE < entries.length) {
+        this.logger.log(
+          `Backfill DB update: ${updated}/${entries.length} updated`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `Death place backfill complete: ${updated} persons updated out of ${persons.length} processed`,
+    );
   }
 
   /**
@@ -421,6 +586,10 @@ export class WikipediaService {
     this.logger.log(`Starting full sync with ${categories.length} categories`);
 
     for (let catIdx = 0; catIdx < categories.length; catIdx++) {
+      if (this.syncAborted) {
+        this.logger.log('Sync aborted by user request');
+        break;
+      }
       const category = categories[catIdx];
       this.logger.log(
         `=== Category ${catIdx + 1}/${categories.length}: ${category} ===`,
@@ -844,12 +1013,14 @@ export class WikipediaService {
       const sparqlData = wdId ? wikidataDetails[wdId] : undefined;
       let birthDate = sparqlData?.birthDate || null;
       let birthPlace = sparqlData?.birthPlace || null;
+      let deathPlace = sparqlData?.deathPlace || null;
 
-      if (!birthDate || !birthPlace) {
+      if (!birthDate || !birthPlace || !deathPlace) {
         await this.sleep(this.REQUEST_DELAY);
         const fallback = await this.parseInfoboxHtml(pageId);
         birthDate = birthDate || fallback.birthDate;
         birthPlace = birthPlace || fallback.birthPlace;
+        deathPlace = deathPlace || fallback.deathPlace;
       }
 
       enrichedFetched.push({
@@ -860,6 +1031,7 @@ export class WikipediaService {
         imageUrl: wikiTextDetails[pageId]?.image,
         occupation: sparqlData?.occupations || [],
         deathDate: sparqlData?.deathDate || undefined,
+        deathPlace: deathPlace || undefined,
       });
     }
 
@@ -1284,6 +1456,7 @@ export class WikipediaService {
         birthPlace: string;
         occupations: string[];
         deathDate: string | null;
+        deathPlace: string | null;
       }
     >
   > {
@@ -1296,6 +1469,7 @@ export class WikipediaService {
         birthPlace: string;
         occupations: string[];
         deathDate: string | null;
+        deathPlace: string | null;
       }
     > = {};
 
@@ -1312,13 +1486,14 @@ export class WikipediaService {
       try {
         const idsString = batch.map((id) => `wd:${id}`).join(' ');
         const sparqlQuery = `
-          SELECT ?person ?birthdate ?birthplaceLabel ?deathdate
+          SELECT ?person ?birthdate ?birthplaceLabel ?deathdate ?deathplaceLabel
                  (GROUP_CONCAT(DISTINCT ?occupationLabel; separator="|") AS ?occupations)
           WHERE {
             VALUES ?person { ${idsString} }
             OPTIONAL { ?person wdt:P569 ?birthdate. }
             OPTIONAL { ?person wdt:P570 ?deathdate. }
             OPTIONAL { ?person wdt:P19 ?birthplace. }
+            OPTIONAL { ?person wdt:P20 ?deathplace. }
             OPTIONAL {
               ?person wdt:P106 ?occupation.
               ?occupation rdfs:label ?occupationLabel.
@@ -1326,7 +1501,7 @@ export class WikipediaService {
             }
             SERVICE wikibase:label { bd:serviceParam wikibase:language "uk". }
           }
-          GROUP BY ?person ?birthdate ?birthplaceLabel ?deathdate
+          GROUP BY ?person ?birthdate ?birthplaceLabel ?deathdate ?deathplaceLabel
         `;
 
         const data = await this.fetchSparqlWithRetry(sparqlQuery);
@@ -1342,6 +1517,7 @@ export class WikipediaService {
                 ? occupationsStr.split('|').filter(Boolean)
                 : [],
               deathDate: result?.deathdate?.value.split('T')[0] || null,
+              deathPlace: result?.deathplaceLabel?.value || null,
             };
           }
         } else {
@@ -1413,9 +1589,11 @@ export class WikipediaService {
     return detailsMap;
   }
 
-  private async parseInfoboxHtml(
-    pageId: number,
-  ): Promise<{ birthDate: string | null; birthPlace: string | null }> {
+  private async parseInfoboxHtml(pageId: number): Promise<{
+    birthDate: string | null;
+    birthPlace: string | null;
+    deathPlace: string | null;
+  }> {
     try {
       const params = new URLSearchParams({
         action: 'parse',
@@ -1427,7 +1605,7 @@ export class WikipediaService {
       const data = await this.fetchFromWiki(params);
       const html = data?.parse?.text?.['*'];
 
-      if (!html) return { birthDate: null, birthPlace: null };
+      if (!html) return { birthDate: null, birthPlace: null, deathPlace: null };
 
       const dom = new JSDOM(html);
       const document = dom.window.document;
@@ -1435,6 +1613,7 @@ export class WikipediaService {
 
       let birthDate = null;
       let birthPlace = null;
+      let deathPlace = null;
 
       if (infobox) {
         const rows = infobox.querySelectorAll('tr');
@@ -1467,15 +1646,27 @@ export class WikipediaService {
                 cell.textContent?.trim() ||
                 null;
             }
+            if (
+              headerText.includes('місце смерті') ||
+              headerText.includes('помер')
+            ) {
+              const placeElem = cell.querySelector(
+                '[data-wikidata-property-id="P20"]',
+              );
+              deathPlace =
+                placeElem?.textContent?.trim() ||
+                cell.textContent?.trim() ||
+                null;
+            }
           }
         });
       }
-      return { birthDate, birthPlace };
+      return { birthDate, birthPlace, deathPlace };
     } catch (error: any) {
       this.logger.warn(
         `Fallback parsing failed for page ${pageId}: ${error.message}`,
       );
-      return { birthDate: null, birthPlace: null };
+      return { birthDate: null, birthPlace: null, deathPlace: null };
     }
   }
 

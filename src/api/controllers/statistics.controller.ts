@@ -21,7 +21,12 @@ export class StatisticsController {
 
   @Get('geo')
   @ApiOperation({ summary: 'Get geographic distribution by birth place' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Max results (default: 20)' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Max results (default: 20)',
+  })
   async getGeoDistribution(
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
@@ -32,6 +37,20 @@ export class StatisticsController {
   @ApiOperation({ summary: 'Get category distribution' })
   async getCategoryDistribution() {
     return this.statisticsService.getCategoryDistribution();
+  }
+
+  @Get('death-places')
+  @ApiOperation({ summary: 'Get geographic distribution by death place' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Max results (default: 20)',
+  })
+  async getDeathPlaceDistribution(
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.statisticsService.getDeathPlaceDistribution(limit);
   }
 
   @Get('overview')

@@ -65,6 +65,8 @@ export class StatisticsService {
 
   /**
    * Distribution of persons by death place (top N).
+   * Uses the GIN index (idx_person_meta_data_gin) via the ? operator
+   * for fast candidate selection before extracting the text value.
    */
   async getDeathPlaceDistribution(
     limit = 20,
@@ -72,7 +74,8 @@ export class StatisticsService {
     const results = await this.personRepository.query(
       `SELECT meta_data->>'deathPlace' AS "deathPlace", COUNT(*)::int AS count
        FROM person
-       WHERE meta_data->>'deathPlace' IS NOT NULL AND meta_data->>'deathPlace' != ''
+       WHERE meta_data ? 'deathPlace'
+         AND meta_data->>'deathPlace' != ''
        GROUP BY meta_data->>'deathPlace'
        ORDER BY count DESC
        LIMIT $1`,
@@ -80,6 +83,30 @@ export class StatisticsService {
     );
     return results.map((r: any) => ({
       deathPlace: r.deathPlace,
+      count: r.count,
+    }));
+  }
+
+  /**
+   * Distribution of persons by occupation (top N).
+   * Unnests the meta_data->'occupation' JSONB array;
+   * the GIN index accelerates the ? operator for existence check.
+   */
+  async getOccupationDistribution(
+    limit = 20,
+  ): Promise<{ occupation: string; count: number }[]> {
+    const results = await this.personRepository.query(
+      `SELECT occ AS occupation, COUNT(*)::int AS count
+       FROM person,
+            jsonb_array_elements_text(meta_data->'occupation') AS occ
+       WHERE meta_data ? 'occupation'
+       GROUP BY occ
+       ORDER BY count DESC
+       LIMIT $1`,
+      [limit],
+    );
+    return results.map((r: any) => ({
+      occupation: r.occupation,
       count: r.count,
     }));
   }

@@ -36,14 +36,22 @@ async function bootstrap() {
   const queries = [
     // Enable PostGIS extension
     `CREATE EXTENSION IF NOT EXISTS postgis;`,
-    // Enable trigram extension for fuzzy search (Step 6)
+    // Enable trigram extension for fuzzy search
     `CREATE EXTENSION IF NOT EXISTS pg_trgm;`,
+    // Enable fuzzystrmatch for Levenshtein distance
+    `CREATE EXTENSION IF NOT EXISTS fuzzystrmatch;`,
     // GIN index on meta_data JSONB
     `CREATE INDEX IF NOT EXISTS idx_person_meta_data_gin ON person USING GIN (meta_data);`,
     // GIST index on birthLocation geometry
     `CREATE INDEX IF NOT EXISTS idx_person_birth_location_gist ON person USING GIST ("birthLocation");`,
-    // Trigram GIN index on name for fuzzy search
+    // Trigram GIN index on name for fuzzy search (accelerates the % operator)
     `CREATE INDEX IF NOT EXISTS idx_person_name_trgm ON person USING GIN (name gin_trgm_ops);`,
+    // GIN index for full-text search on name + summary
+    `CREATE INDEX IF NOT EXISTS idx_person_fts ON person USING GIN (
+       to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(summary, ''))
+     );`,
+    `CREATE INDEX IF NOT EXISTS idx_person_birthyear_rating
+       ON person ("birthYear", rating DESC);`,
     // Populate birthLocation from existing lat/lng where missing
     `UPDATE person SET "birthLocation" = ST_SetSRID(ST_MakePoint(lng, lat), 4326)
      WHERE lat IS NOT NULL AND lng IS NOT NULL AND "birthLocation" IS NULL;`,

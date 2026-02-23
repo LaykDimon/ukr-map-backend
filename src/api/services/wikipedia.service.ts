@@ -301,8 +301,34 @@ export class WikipediaService {
     return Array.from(discovered);
   }
 
-  async getAllPeople(offset?: number, limit?: number): Promise<Person[]> {
+  /**
+   * Returns lightweight DTOs (no summary / timestamps) for the map view.
+   * Excluding `summary` (full biography text) cuts payload from ~2 MB to
+   * ~300 KB for 2 000 records (~35 KB gzipped).
+   * The client lazy-loads the full biography via GET /persons/:id on click.
+   */
+  async getAllPeople(
+    offset?: number,
+    limit?: number,
+  ): Promise<Partial<Person>[]> {
     return this.personRepository.find({
+      select: [
+        'id',
+        'name',
+        'slug',
+        'wikiPageId',
+        'birthYear',
+        'birthDate',
+        'birthPlace',
+        'lat',
+        'lng',
+        'meta_data',
+        'views',
+        'rating',
+        'imageUrl',
+        'category',
+        'isManual',
+      ],
       order: { rating: 'DESC' },
       ...(offset != null ? { skip: offset } : {}),
       ...(limit != null ? { take: limit } : {}),

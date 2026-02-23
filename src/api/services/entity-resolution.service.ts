@@ -106,13 +106,16 @@ export class EntityResolutionService {
     });
     if (byName) return byName;
 
-    // Third: fuzzy match using pg_trgm similarity (threshold 0.6)
+    // Third: fuzzy match using pg_trgm % operator (GIN-index-accelerated)
     try {
       const normalized = this.normalizeName(name);
+      await this.personRepository.query(
+        `SET pg_trgm.similarity_threshold = 0.6`,
+      );
       const results = await this.personRepository.query(
-        `SELECT id FROM person
-         WHERE similarity(lower(name), $1) > 0.6
-         ORDER BY similarity(lower(name), $1) DESC
+        `SELECT id, similarity(lower(name), $1) AS sim FROM person
+         WHERE lower(name) % $1
+         ORDER BY sim DESC
          LIMIT 1`,
         [normalized],
       );

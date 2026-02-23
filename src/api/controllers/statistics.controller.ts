@@ -53,6 +53,22 @@ export class StatisticsController {
     return this.statisticsService.getDeathPlaceDistribution(limit);
   }
 
+  @Get('occupations')
+  @ApiOperation({
+    summary: 'Get occupation distribution (GIN-indexed JSONB query)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Max results (default: 20)',
+  })
+  async getOccupationDistribution(
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+  ) {
+    return this.statisticsService.getOccupationDistribution(limit);
+  }
+
   @Get('overview')
   @ApiOperation({ summary: 'Get overall statistics summary' })
   async getOverview() {
